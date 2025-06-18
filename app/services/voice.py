@@ -10,6 +10,11 @@ import requests
 from edge_tts import SubMaker, submaker
 from edge_tts.submaker import mktimestamp
 from loguru import logger
+
+# 配置 MoviePy 日志以禁止不必要的输出
+from app.utils.moviepy_logger import init_moviepy_logger
+init_moviepy_logger()
+
 from moviepy.video.tools import subtitles
 
 from app.config import config
@@ -1416,10 +1421,6 @@ def create_subtitle(sub_maker: submaker.SubMaker, text: str, subtitle_file: str)
     logger.info(f"=== SubMaker Debug Info ===")
     logger.info(f"Total subs count: {len(sub_maker.subs)}")
     logger.info(f"Total offsets count: {len(sub_maker.offset)}")
-    
-    # 打印前10个字幕信息作为示例
-    for i in range(min(10, len(sub_maker.subs))):
-        logger.info(f"Sub[{i}]: text='{sub_maker.subs[i]}', offset={sub_maker.offset[i]}")
     
     if len(sub_maker.subs) > 10:
         logger.info(f"... and {len(sub_maker.subs) - 10} more subs")

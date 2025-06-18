@@ -6,6 +6,11 @@ import gc
 import shutil
 from typing import List
 from loguru import logger
+
+# 配置 MoviePy 日志以禁止不必要的输出
+from app.utils.moviepy_logger import init_moviepy_logger, suppress_moviepy_output
+init_moviepy_logger()
+
 from moviepy import (
     AudioFileClip,
     ColorClip,
@@ -121,10 +126,11 @@ def random_to_begin_video(
     random_path = os.path.join(begin_videos_dir, random.choice(begin_list))
     logger.info(f"random begin video: {random_path}")
 
-    clip = VideoFileClip(random_path)
-    clip_duration = clip.duration
-    clip_w, clip_h = clip.size
-    close_clip(clip)
+    with suppress_moviepy_output():
+        clip = VideoFileClip(random_path)
+        clip_duration = clip.duration
+        clip_w, clip_h = clip.size
+        close_clip(clip)
     end_time = min(max_clip_duration, clip_duration)
     begin_videoclip = SubClippedVideoClip(file_path= random_path, start_time=0, end_time=end_time, width=clip_w, height=clip_h)
     return begin_videoclip
@@ -155,10 +161,11 @@ def combine_videos(
     subclipped_items = []
     video_duration = 0
     for video_path in video_paths:
-        clip = VideoFileClip(video_path)
-        clip_duration = clip.duration
-        clip_w, clip_h = clip.size
-        close_clip(clip)
+        with suppress_moviepy_output():
+            clip = VideoFileClip(video_path)
+            clip_duration = clip.duration
+            clip_w, clip_h = clip.size
+            close_clip(clip)
         
         start_time = 0
 
@@ -186,7 +193,8 @@ def combine_videos(
         logger.debug(f"processing clip {i+1}: {subclipped_item.width}x{subclipped_item.height}, current duration: {video_duration:.2f}s, remaining: {audio_duration - video_duration:.2f}s")
         
         try:
-            clip = VideoFileClip(subclipped_item.file_path).subclipped(subclipped_item.start_time, subclipped_item.end_time)
+            with suppress_moviepy_output():
+                clip = VideoFileClip(subclipped_item.file_path).subclipped(subclipped_item.start_time, subclipped_item.end_time)
             clip_duration = clip.duration
             # Not all videos are same size, so we need to resize them
             clip_w, clip_h = clip.size
@@ -198,17 +206,26 @@ def combine_videos(
                 if clip_ratio == video_ratio:
                     clip = clip.resized(new_size=(video_width, video_height))
                 else:
+                    # 使用裁剪模式：将视频放大并裁剪，而不是添加黑边
+                    # 计算缩放因子，确保视频充满整个画面
                     if clip_ratio > video_ratio:
-                        scale_factor = video_width / clip_w
-                    else:
+                        # 视频更宽，基于高度缩放
                         scale_factor = video_height / clip_h
-
+                    else:
+                        # 视频更高，基于宽度缩放
+                        scale_factor = video_width / clip_w
+                    
+                    # 缩放视频
                     new_width = int(clip_w * scale_factor)
                     new_height = int(clip_h * scale_factor)
-
-                    background = ColorClip(size=(video_width, video_height), color=(0, 0, 0)).with_duration(clip_duration)
-                    clip_resized = clip.resized(new_size=(new_width, new_height)).with_position("center")
-                    clip = CompositeVideoClip([background, clip_resized])
+                    clip = clip.resized(new_size=(new_width, new_height))
+                    
+                    # 裁剪到目标尺寸，保持中心位置
+                    x_center = new_width // 2
+                    y_center = new_height // 2
+                    x1 = x_center - video_width // 2
+                    y1 = y_center - video_height // 2
+                    clip = clip.cropped(x1=x1, y1=y1, x2=x1 + video_width, y2=y1 + video_height)
                     
             shuffle_side = random.choice(["left", "right", "top", "bottom"])
             if video_transition_mode.value == VideoTransitionMode.none.value:
@@ -257,7 +274,7 @@ def combine_videos(
             video_duration += clip.duration
         logger.info(f"video duration: {video_duration:.2f}s, audio duration: {audio_duration:.2f}s, looped {len(processed_clips)-len(base_clips)} clips")
      
-    # merge video clips progressively, avoid loading all videos at once to avoid memory overflow
+    # merge video clips using batch processing to improve performance
     logger.info("starting clip merging process")
     if not processed_clips:
         logger.warning("no clips available for merging")
@@ -267,53 +284,112 @@ def combine_videos(
     if len(processed_clips) == 1:
         logger.info("using single clip directly")
         shutil.copy(processed_clips[0].file_path, combined_video_path)
-        delete_files(processed_clips)
+        delete_files([processed_clips[0].file_path])
         logger.info("video combining completed")
         return combined_video_path
     
-    # create initial video file as base
-    base_clip_path = processed_clips[0].file_path
-    temp_merged_video = f"{output_dir}/temp-merged-video.mp4"
-    temp_merged_next = f"{output_dir}/temp-merged-next.mp4"
+    # batch merge strategy: merge clips in groups to reduce iterations
+    batch_size = 10  # merge 10 clips at a time
+    temp_batch_files = []
+    batch_index = 0
     
-    # copy first clip as initial merged video
-    shutil.copy(base_clip_path, temp_merged_video)
-    
-    # merge remaining video clips one by one
-    for i, clip in enumerate(processed_clips[1:], 1):
-        logger.info(f"merging clip {i}/{len(processed_clips)-1}, duration: {clip.duration:.2f}s")
+    # first pass: merge clips in batches
+    for i in range(0, len(processed_clips), batch_size):
+        batch = processed_clips[i:i + batch_size]
+        if len(batch) == 1:
+            # if only one clip in batch, just use it
+            temp_batch_files.append(batch[0].file_path)
+            continue
+            
+        batch_index += 1
+        logger.info(f"merging batch {batch_index}, clips {i+1} to {min(i+batch_size, len(processed_clips))}")
         
         try:
-            # load current base video and next clip to merge
-            base_clip = VideoFileClip(temp_merged_video)
-            next_clip = VideoFileClip(clip.file_path)
+            # load all clips in this batch
+            clips_to_merge = []
+            with suppress_moviepy_output():
+                for clip_info in batch:
+                    clip = VideoFileClip(clip_info.file_path)
+                    clips_to_merge.append(clip)
             
-            # merge these two clips
-            merged_clip = concatenate_videoclips([base_clip, next_clip])
-
-            # save merged result to temp file
-            merged_clip.write_videofile(
-                filename=temp_merged_next,
+            # merge all clips in this batch at once
+            merged_batch = concatenate_videoclips(clips_to_merge)
+            
+            # save batch result
+            batch_file = f"{output_dir}/temp-batch-{batch_index}.mp4"
+            merged_batch.write_videofile(
+                filename=batch_file,
                 threads=threads,
                 logger=None,
                 temp_audiofile_path=output_dir,
                 audio_codec=audio_codec,
                 fps=fps,
             )
-            close_clip(base_clip)
-            close_clip(next_clip)
-            close_clip(merged_clip)
             
-            # replace base file with new merged file
-            delete_files(temp_merged_video)
-            os.rename(temp_merged_next, temp_merged_video)
+            # close all clips
+            for clip in clips_to_merge:
+                close_clip(clip)
+            close_clip(merged_batch)
+            
+            temp_batch_files.append(batch_file)
             
         except Exception as e:
-            logger.error(f"failed to merge clip: {str(e)}")
-            continue
+            logger.error(f"failed to merge batch {batch_index}: {str(e)}")
+            # if batch merge fails, add individual files
+            for clip_info in batch:
+                temp_batch_files.append(clip_info.file_path)
     
-    # after merging, rename final result to target file name
-    os.rename(temp_merged_video, combined_video_path)
+    # if we have multiple batches, merge them recursively
+    while len(temp_batch_files) > 1:
+        logger.info(f"merging {len(temp_batch_files)} batch files")
+        next_level_files = []
+        
+        for i in range(0, len(temp_batch_files), batch_size):
+            batch = temp_batch_files[i:i + batch_size]
+            if len(batch) == 1:
+                next_level_files.append(batch[0])
+                continue
+                
+            try:
+                clips_to_merge = []
+                with suppress_moviepy_output():
+                    for file_path in batch:
+                        clip = VideoFileClip(file_path)
+                        clips_to_merge.append(clip)
+                
+                merged_clip = concatenate_videoclips(clips_to_merge)
+                
+                batch_index += 1
+                batch_file = f"{output_dir}/temp-batch-{batch_index}.mp4"
+                merged_clip.write_videofile(
+                    filename=batch_file,
+                    threads=threads,
+                    logger=None,
+                    temp_audiofile_path=output_dir,
+                    audio_codec=audio_codec,
+                    fps=fps,
+                )
+                
+                for clip in clips_to_merge:
+                    close_clip(clip)
+                close_clip(merged_clip)
+                
+                next_level_files.append(batch_file)
+                
+                # delete intermediate files
+                for file_path in batch:
+                    if file_path.startswith(f"{output_dir}/temp-batch-"):
+                        delete_files(file_path)
+                        
+            except Exception as e:
+                logger.error(f"failed to merge batch files: {str(e)}")
+                next_level_files.extend(batch)
+        
+        temp_batch_files = next_level_files
+    
+    # move final result to target location
+    if temp_batch_files:
+        shutil.move(temp_batch_files[0], combined_video_path)
     
     # clean temp files
     clip_files = [clip.file_path for clip in processed_clips]
@@ -452,10 +528,11 @@ def generate_video(
             _clip = _clip.with_position(("center", "center"))
         return _clip
 
-    video_clip = VideoFileClip(video_path).without_audio()
-    audio_clip = AudioFileClip(audio_path).with_effects(
-        [afx.MultiplyVolume(params.voice_volume)]
-    )
+    with suppress_moviepy_output():
+        video_clip = VideoFileClip(video_path).without_audio()
+        audio_clip = AudioFileClip(audio_path).with_effects(
+            [afx.MultiplyVolume(params.voice_volume)]
+        )
 
     def make_textclip(text):
         return TextClip(
@@ -477,13 +554,14 @@ def generate_video(
     bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
     if bgm_file:
         try:
-            bgm_clip = AudioFileClip(bgm_file).with_effects(
-                [
-                    afx.MultiplyVolume(params.bgm_volume),
-                    afx.AudioFadeOut(3),
-                    afx.AudioLoop(duration=video_clip.duration),
-                ]
-            )
+            with suppress_moviepy_output():
+                bgm_clip = AudioFileClip(bgm_file).with_effects(
+                    [
+                        afx.MultiplyVolume(params.bgm_volume),
+                        afx.AudioFadeOut(3),
+                        afx.AudioLoop(duration=video_clip.duration),
+                    ]
+                )
             audio_clip = CompositeAudioClip([audio_clip, bgm_clip])
         except Exception as e:
             logger.error(f"failed to add bgm: {str(e)}")
@@ -508,9 +586,11 @@ def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
 
         ext = utils.parse_extension(material.url)
         try:
-            clip = VideoFileClip(material.url)
+            with suppress_moviepy_output():
+                clip = VideoFileClip(material.url)
         except Exception:
-            clip = ImageClip(material.url)
+            with suppress_moviepy_output():
+                clip = ImageClip(material.url)
 
         width = clip.size[0]
         height = clip.size[1]
@@ -591,7 +671,8 @@ def get_local_videos():
     image_extensions = const.FILE_TYPE_IMAGES  # ["jpg", "jpeg", "png", "bmp"]
     
     try:
-        # 遍历文件夹中的所有文件
+        # 获取所有文件
+        all_files = []
         for filename in os.listdir(video_folder):
             file_path = os.path.join(video_folder, filename)
             
@@ -604,37 +685,36 @@ def get_local_videos():
             
             # 检查是否是支持的文件格式
             if ext.lower() in video_extensions or ext.lower() in image_extensions:
-                # 创建 MaterialInfo 对象
-                material_info = MaterialInfo()
-                material_info.provider = "local"
-                material_info.url = file_path
+                all_files.append(file_path)
+        
+        logger.info(f"找到 {len(all_files)} 个媒体文件")
+        
+        # 随机选择最多100个文件
+        if len(all_files) > 100:
+            selected_files = random.sample(all_files, 100)
+            logger.info(f"随机选择了 100 个文件进行处理")
+        else:
+            selected_files = all_files
+            logger.info(f"使用所有 {len(selected_files)} 个文件")
+        
+        # 处理选中的文件
+        for file_path in selected_files:
+            filename = os.path.basename(file_path)
+            ext = utils.parse_extension(file_path)
+            
+            # 创建 MaterialInfo 对象
+            material_info = MaterialInfo()
+            material_info.provider = "local"
+            material_info.url = file_path
+            
+            # 简化验证，只设置基本信息
+            if ext.lower() in video_extensions:
+                material_info.duration = 10  # 默认时长
+            else:  # 图片文件
+                material_info.duration = 4  # 图片默认时长4秒
                 
-                try:
-                    # 验证文件是否可以被 MoviePy 读取
-                    if ext.lower() in video_extensions:
-                        test_clip = VideoFileClip(file_path)
-                        width, height = test_clip.size
-                        material_info.duration = int(test_clip.duration)
-                        close_clip(test_clip)
-                    else:  # 图片文件
-                        test_clip = ImageClip(file_path)
-                        width, height = test_clip.size
-                        material_info.duration = 4  # 图片默认时长4秒
-                        close_clip(test_clip)
-                    
-                    # 检查分辨率要求
-                    if width < 480 or height < 480:
-                        logger.warning(f"跳过低分辨率文件: {filename} ({width}x{height})")
-                        continue
-                        
-                    materials.append(material_info)
-                    logger.info(f"添加视频素材: {filename} ({width}x{height}, {material_info.duration}s)")
-                    
-                except Exception as e:
-                    logger.error(f"无法读取文件 {filename}: {str(e)}")
-                    continue
-            else:
-                logger.debug(f"跳过不支持的文件格式: {filename}")
+            materials.append(material_info)
+            logger.debug(f"添加素材: {filename}")
     
     except Exception as e:
         logger.error(f"扫描视频文件夹时出错: {str(e)}")
