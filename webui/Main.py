@@ -2,6 +2,7 @@ import os
 import platform
 import sys
 from uuid import uuid4
+import json
 
 import streamlit as st
 from loguru import logger
@@ -55,7 +56,14 @@ font_dir = os.path.join(root_dir, "resource", "fonts")
 song_dir = os.path.join(root_dir, "resource", "songs")
 i18n_dir = os.path.join(root_dir, "webui", "i18n")
 config_file = os.path.join(root_dir, "webui", ".streamlit", "webui.toml")
+resource_config_file = os.path.join(root_dir, "resource", "config.json")
 system_locale = utils.get_system_locale()
+
+# 加载resource/config.json
+resource_config = {}
+if os.path.exists(resource_config_file):
+    with open(resource_config_file, 'r', encoding='utf-8') as f:
+        resource_config = json.load(f)
 
 
 if "video_subject" not in st.session_state:
@@ -464,13 +472,63 @@ if not config.app.get("hide_config", False):
             save_keys_to_config("pixabay_api_keys", pixabay_api_key)
 
 llm_provider = config.app.get("llm_provider", "").lower()
+
+params = VideoParams(video_subject="")
+uploaded_files = []
+
+# 文件夹选择模块 - 放在最上方
+if resource_config:
+    with st.container(border=True):
+        azure_folders = resource_config.get("azure_share_folder", [])
+        default_folders = resource_config.get("default", [])
+        folder_file_number = resource_config.get("folder_file_number", 2)
+        
+        st.write(tr("Select Folders"))
+        selected_folders = []
+        
+        # 创建多列布局，使用更多列以充分利用宽度
+        num_cols = 6  # 增加列数以更好地利用全宽
+        cols = st.columns(num_cols)
+        for i, folder in enumerate(azure_folders):
+            col_index = i % num_cols
+            with cols[col_index]:
+                is_default = folder in default_folders
+                is_selected = st.checkbox(
+                    folder,
+                    value=is_default,
+                    key=f"folder_checkbox_{folder}"
+                )
+                if is_selected:
+                    selected_folders.append(folder)
+        
+        params.selected_folders = selected_folders
+        
+        # 数量选择框
+        selected_file_number = st.number_input(
+            tr("Files per Folder"),
+            min_value=1,
+            max_value=3,
+            value=folder_file_number,
+            step=1,
+            key="file_number_selector"
+        )
+        params.folder_file_number = selected_file_number
+        
+        # 默认标题输入框
+        default_title = st.text_area(
+            tr("Default Title"),
+            value="",
+            height=100,
+            key="default_title_input",
+            placeholder=tr("Enter default title here...")
+        )
+        params.default_title = default_title
+
+# 三列布局
 panel = st.columns(3)
 left_panel = panel[0]
 middle_panel = panel[1]
 right_panel = panel[2]
-
-params = VideoParams(video_subject="")
-uploaded_files = []
 
 with left_panel:
     with st.container(border=True):

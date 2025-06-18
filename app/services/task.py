@@ -1,7 +1,9 @@
 import math
+import os
 import os.path
 import re
 import time
+import json
 from os import path
 
 from loguru import logger
@@ -212,8 +214,36 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
         return downloaded_videos
 
 
+def save_default_title(video_path, default_title):
+    """
+    在视频文件相同路径下创建同名的 .txt 文件，写入 default_title
+    
+    Args:
+        video_path: 视频文件的完整路径
+        default_title: 要写入的默认标题内容
+    """
+    if not default_title:
+        return
+    
+    # 获取视频文件的目录和文件名（不含扩展名）
+    video_dir = os.path.dirname(video_path)
+    video_filename = os.path.basename(video_path)
+    filename_without_ext = os.path.splitext(video_filename)[0]
+    
+    # 构建 .txt 文件路径
+    txt_file_path = os.path.join(video_dir, f"{filename_without_ext}.txt")
+    
+    # 写入 default_title 到文件
+    try:
+        with open(txt_file_path, 'w', encoding='utf-8') as f:
+            f.write(default_title)
+        logger.info(f"Saved default title to: {txt_file_path}")
+    except Exception as e:
+        logger.error(f"Failed to save default title: {e}")
+
+
 def generate_final_videos(
-    task_id, params, downloaded_videos, audio_file, subtitle_path, index
+    task_id, params, downloaded_videos, audio_file, subtitle_path, index, target_folder=None
 ):
     video_concat_mode = (
         params.video_concat_mode if params.video_count == 1 else VideoConcatMode.random
@@ -241,7 +271,13 @@ def generate_final_videos(
 
     # 使用当前时间毫秒数作为文件名
     timestamp_ms = int(time.time() * 1000)
-    final_video_path = path.join(utils.task_dir(task_id), f"{index}-{timestamp_ms}.mp4")
+    
+    # 如果指定了目标文件夹，则保存到指定文件夹
+    if target_folder:
+        os.makedirs(target_folder, exist_ok=True)
+        final_video_path = path.join(target_folder, f"{index}-{timestamp_ms}.mp4")
+    else:
+        final_video_path = path.join(utils.task_dir(task_id), f"{index}-{timestamp_ms}.mp4")
 
     logger.info(f"\n\n## generating video: {index} => {final_video_path}")
     video.generate_video(
@@ -262,8 +298,32 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
     logger.info(f"start task: {task_id}, stop_at: {stop_at}")
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=1)
     
+    # 1. 更新 resource/config.json 文件
+    selected_folders = getattr(params, 'selected_folders', [])
+    folder_file_number = getattr(params, 'folder_file_number', 2)
+    
+    if selected_folders:
+        resource_config_path = path.join(path.dirname(path.dirname(path.dirname(path.abspath(__file__)))), "resource", "config.json")
+        if os.path.exists(resource_config_path):
+            with open(resource_config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+            
+            # 更新默认选择的文件夹和文件数量
+            config_data['default'] = selected_folders
+            config_data['folder_file_number'] = folder_file_number
+            
+            with open(resource_config_path, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"Updated resource/config.json with selected_folders: {selected_folders} and folder_file_number: {folder_file_number}")
+    
+    # 2. 判断 selected_folders 并调整 video_count
+    if selected_folders:
+        original_video_count = params.video_count
+        params.video_count = len(selected_folders) * folder_file_number
+        logger.info(f"Adjusted video_count from {original_video_count} to {params.video_count} based on selected_folders")
 
-    # 2. Generate terms
+    # 3. Generate terms
     video_terms = ""
     if params.video_source != "local":
         video_terms = generate_terms(task_id, params, params.video_script)
@@ -304,6 +364,13 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
     
     final_video_paths = []
     combined_video_paths = []
+    
+    # 4. 创建文件夹计数器
+    folder_counters = {}
+    if selected_folders:
+        for folder in selected_folders:
+            folder_counters[folder] = 0
+    
     for i in range(params.video_count):
         # 1. Generate script
         # video_script = generate_script(task_id, params)
@@ -359,10 +426,27 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
         sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=40)
 
+        # 5. 确定目标文件夹
+        target_folder = None
+        if selected_folders:
+            # 找到当前应该使用的文件夹
+            for folder in selected_folders:
+                if folder_counters[folder] < folder_file_number:
+                    azure_local_path = config.app.get("azure_local_path", "")
+                    target_folder = path.join(azure_local_path, folder)
+                    folder_counters[folder] += 1
+                    logger.info(f"Video {i+1} will be saved to folder: {target_folder}, count: {folder_counters[folder]}/{folder_file_number}")
+                    break
+
         # 6. Generate final videos
         final_video_path, combined_video_path = generate_final_videos(
-            task_id, params, downloaded_videos, audio_file, subtitle_path, i + 1
+            task_id, params, downloaded_videos, audio_file, subtitle_path, i + 1, target_folder
         )
+        
+        # 7. 如果有 default_title，创建对应的 .txt 文件
+        default_title = getattr(params, 'default_title', '')
+        if default_title and final_video_path:
+            save_default_title(final_video_path, default_title)
 
         final_video_paths.append(final_video_path)
         combined_video_paths.append(combined_video_path)
