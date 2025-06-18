@@ -1,6 +1,7 @@
 import math
 import os.path
 import re
+import time
 from os import path
 
 from loguru import logger
@@ -238,7 +239,9 @@ def generate_final_videos(
     _progress += 50 / params.video_count / 2
     sm.state.update_task(task_id, progress=_progress)
 
-    final_video_path = path.join(utils.task_dir(task_id), f"final-{index}.mp4")
+    # 使用当前时间毫秒数作为文件名
+    timestamp_ms = int(time.time() * 1000)
+    final_video_path = path.join(utils.task_dir(task_id), f"{index}-{timestamp_ms}.mp4")
 
     logger.info(f"\n\n## generating video: {index} => {final_video_path}")
     video.generate_video(
