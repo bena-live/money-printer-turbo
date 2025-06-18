@@ -621,11 +621,11 @@ with middle_panel:
         params.video_aspect = VideoAspect(video_aspect_ratios[selected_index][1])
 
         params.video_clip_duration = st.selectbox(
-            tr("Clip Duration"), options=[2, 3, 4, 5, 6, 7, 8, 9, 10], index=1
+            tr("Clip Duration"), options=[2, 3, 4, 5, 6, 7, 8, 9, 10], index=3
         )
         params.video_count = st.selectbox(
             tr("Number of Videos Generated Simultaneously"),
-            options=[1, 2, 3, 4, 5],
+            options=[1, 2, 3, 4, 5, 6, 7, 8],
             index=0,
         )
     with st.container(border=True):
@@ -914,7 +914,7 @@ with right_panel:
         with stroke_cols[0]:
             params.stroke_color = st.color_picker(tr("Stroke Color"), "#000000")
         with stroke_cols[1]:
-            params.stroke_width = st.slider(tr("Stroke Width"), 0.0, 10.0, 1.5)
+            params.stroke_width = st.slider(tr("Stroke Width"), 0.0, 10.0, 10.0)
 
 start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
 if start_button:

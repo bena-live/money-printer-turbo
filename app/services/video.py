@@ -663,11 +663,11 @@ def get_local_videos():
     # 标准化路径
     video_folder = os.path.normpath(video_folder)
     
-    logger.info(f"开始扫描本地视频文件夹: {video_folder}")
+    logger.info(f"get my local folder: {video_folder}")
     
     # 检查文件夹是否存在
     if not os.path.exists(video_folder):
-        logger.warning(f"指定的视频文件夹不存在: {video_folder}")
+        logger.warning(f"folder not: {video_folder}")
         return materials
     
     # 扫描支持的视频文件格式
@@ -691,15 +691,13 @@ def get_local_videos():
             if ext.lower() in video_extensions or ext.lower() in image_extensions:
                 all_files.append(file_path)
         
-        logger.info(f"找到 {len(all_files)} 个媒体文件")
+        logger.info(f"All {len(all_files)} in media files")
         
         # 随机选择最多100个文件
         if len(all_files) > 100:
             selected_files = random.sample(all_files, 100)
-            logger.info(f"随机选择了 100 个文件进行处理")
         else:
             selected_files = all_files
-            logger.info(f"使用所有 {len(selected_files)} 个文件")
         
         # 处理选中的文件
         for file_path in selected_files:
@@ -718,17 +716,17 @@ def get_local_videos():
                 material_info.duration = 4  # 图片默认时长4秒
                 
             materials.append(material_info)
-            logger.debug(f"添加素材: {filename}")
+            logger.debug(f"add material: {filename}")
     
     except Exception as e:
         logger.error(f"扫描视频文件夹时出错: {str(e)}")
         return []
     
-    logger.info(f"共找到 {len(materials)} 个有效的视频素材")
+    logger.info(f"add to {len(materials)} more in materials")
     
     # 如果有图片文件，需要预处理转换为视频
     if materials:
-        logger.info("开始预处理素材文件...")
+        logger.info("start handle materials...")
         materials = preprocess_video(materials, clip_duration=4)
     
     return materials
