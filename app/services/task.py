@@ -121,7 +121,7 @@ def generate_test_audio(task_id, params, video_script, current_folder=None):
     
     # 根据文件夹名称确定 voice_id
     if current_folder and current_folder in ["@grumbly.nutlike", "@life.stories.unscripted"]:
-        voice_id = "bOzCWSRHidmZecV2eXAG"
+        voice_id = "bOzCWSRHidmZecV2eXAG" # Johnny Depp Pro
         logger.info(f"Using voice_id {voice_id} for folder {current_folder}")
     else:
         voice_id = "1BUhH8aaMvGMUdGAmWVM" # 性感男声 | MOevUawCfvCOEYqi1iu8 原音频
