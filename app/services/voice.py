@@ -1481,6 +1481,7 @@ def elevenlabs_tts(
     voice_similarity_boost: float = 0.5,
     voice_style: float = 0.0,
     voice_use_speaker_boost: bool = True,
+    voice_rate: float = 1.0,
 ) -> Union[SubMaker, None]:
     """
     使用 ElevenLabs API 生成语音（带时间戳）
@@ -1495,6 +1496,7 @@ def elevenlabs_tts(
         voice_similarity_boost: 语音相似度增强 (0.0-1.0)
         voice_style: 语音风格强度 (0.0-1.0) - 仅某些语音支持
         voice_use_speaker_boost: 是否使用说话者增强
+        voice_rate: 语音速度 (默认1.0)，值小于1.0会减慢语速，大于1.0会加快语速
         
     Returns:
         SubMaker对象或None
@@ -1517,7 +1519,8 @@ def elevenlabs_tts(
             "stability": voice_stability,
             "similarity_boost": voice_similarity_boost,
             "style": voice_style,
-            "use_speaker_boost": voice_use_speaker_boost
+            "use_speaker_boost": voice_use_speaker_boost,
+            "speed": voice_rate
         }
     }
     

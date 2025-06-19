@@ -116,7 +116,7 @@ def generate_test_audio(task_id, params, video_script):
     
     # ElevenLabs 参数
     api_key = "950572cfc2d8f7b6a3515b9fb2b16f9e"
-    voice_id = "MOevUawCfvCOEYqi1iu8"
+    voice_id = "1BUhH8aaMvGMUdGAmWVM" # 性感男声 | MOevUawCfvCOEYqi1iu8 原音频
     
     # model_id: 模型ID，默认 "eleven_multilingual_v2"，其他选项包括 "eleven_monolingual_v1"
     # voice_stability: 语音稳定性 (0.0-1.0)，默认 0.5
@@ -129,6 +129,7 @@ def generate_test_audio(task_id, params, video_script):
         api_key=api_key,
         voice_id=voice_id,
         voice_file=audio_file,
+        voice_rate=params.voice_rate,
         # model_id="eleven_multilingual_v2",
         # voice_stability=0.5,
         # voice_similarity_boost=0.5,
