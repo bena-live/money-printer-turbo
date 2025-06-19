@@ -36,8 +36,10 @@ def generate_script(task_id, params):
     return video_script
 
 
-def generate_test_script(task_id, params):
+def generate_test_script(task_id, params, current_folder=None):
     logger.info("\n\n## generating similar script based on original")
+    if current_folder:
+        logger.info(f"Generating script for folder: {current_folder}")
     video_origin_script = params.video_script.strip()
     video_script = llm.generate_similar_script(
         original_script=video_origin_script,
@@ -110,13 +112,20 @@ def generate_audio(task_id, params, video_script):
     audio_duration = math.ceil(voice.get_audio_duration(sub_maker))
     return audio_file, audio_duration, sub_maker
 
-def generate_test_audio(task_id, params, video_script):
+def generate_test_audio(task_id, params, video_script, current_folder=None):
     logger.info("\n\n## generating audio using ElevenLabs")
     audio_file = path.join(utils.task_dir(task_id), "audio.mp3")
     
     # ElevenLabs 参数
     api_key = "950572cfc2d8f7b6a3515b9fb2b16f9e"
-    voice_id = "1BUhH8aaMvGMUdGAmWVM" # 性感男声 | MOevUawCfvCOEYqi1iu8 原音频
+    
+    # 根据文件夹名称确定 voice_id
+    if current_folder and current_folder in ["@grumbly.nutlike", "@life.stories.unscripted"]:
+        voice_id = "bOzCWSRHidmZecV2eXAG"
+        logger.info(f"Using voice_id {voice_id} for folder {current_folder}")
+    else:
+        voice_id = "1BUhH8aaMvGMUdGAmWVM" # 性感男声 | MOevUawCfvCOEYqi1iu8 原音频
+        logger.info(f"Using default voice_id {voice_id} for folder {current_folder}")
     
     # model_id: 模型ID，默认 "eleven_multilingual_v2"，其他选项包括 "eleven_monolingual_v1"
     # voice_stability: 语音稳定性 (0.0-1.0)，默认 0.5
@@ -244,7 +253,14 @@ def save_default_title(video_path, default_title):
 
 
 def generate_final_videos(
-    task_id, params, downloaded_videos, audio_file, subtitle_path, index, target_folder=None
+    task_id,
+    params,
+    downloaded_videos,
+    audio_file,
+    subtitle_path,
+    index,
+    target_folder=None,
+    current_folder=None
 ):
     video_concat_mode = (
         params.video_concat_mode if params.video_count == 1 else VideoConcatMode.random
@@ -265,6 +281,7 @@ def generate_final_videos(
         video_transition_mode=video_transition_mode,
         max_clip_duration=params.video_clip_duration,
         threads=params.n_threads,
+        current_folder=current_folder,
     )
 
     _progress += 50 / params.video_count / 2
@@ -373,9 +390,18 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
             folder_counters[folder] = 0
     
     for i in range(params.video_count):
+        # Determine current folder for this video
+        current_folder = None
+        if selected_folders:
+            # Find the folder for this video based on the counter
+            for folder in selected_folders:
+                if folder_counters[folder] < folder_file_number:
+                    current_folder = folder
+                    break
+        
         # 1. Generate script
         # video_script = generate_script(task_id, params)
-        video_script = generate_test_script(task_id, params)
+        video_script = generate_test_script(task_id, params, current_folder)
         if not video_script or "Error: " in video_script:
             sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
             return
@@ -393,7 +419,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         #     task_id, params, video_script
         # )
         audio_file, audio_duration, sub_maker = generate_test_audio(
-            task_id, params, video_script
+            task_id, params, video_script, current_folder
         )
         
         if not audio_file:
@@ -441,7 +467,14 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
         # 6. Generate final videos
         final_video_path, combined_video_path = generate_final_videos(
-            task_id, params, downloaded_videos, audio_file, subtitle_path, i + 1, target_folder
+            task_id,
+            params,
+            downloaded_videos,
+            audio_file,
+            subtitle_path,
+            i + 1,
+            target_folder,
+            current_folder
         )
         
         # 7. 如果有 default_title，创建对应的 .txt 文件

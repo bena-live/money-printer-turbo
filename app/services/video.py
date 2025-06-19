@@ -120,15 +120,33 @@ def get_bgm_file(bgm_type: str = "random", bgm_file: str = ""):
 
 def random_to_begin_video(
     max_clip_duration: int = 5,
+    current_folder: str = None,
 ):
     begin_videos_dir = utils.storage_dir("begin_videos", create=True)
-    begin_list = [
-        "1.mp4", "2.mp4", "3.mp4", "4.mp4", "5.mp4",
-        "6.mp4", "7.mp4", "8.mp4", "9.mp4", "10.mp4",
-        "11.mp4", "12.mp4"
-    ]
-    random_path = os.path.join(begin_videos_dir, random.choice(begin_list))
-    logger.info(f"random begin video: {random_path}")
+    
+    # Folder-specific begin video mapping
+    folder_video_mapping = {
+        "@grumbly.nutlike": "7.mp4",
+        "@life.stories.unscripted": "1.mp4",
+        "@ravindiv6c9": "10.mp4",
+        "@stillmcqfu8": "11.mp4",
+    }
+    
+    # Check if current_folder has a specific video mapping
+    if current_folder and current_folder in folder_video_mapping:
+        selected_video = folder_video_mapping[current_folder]
+        logger.info(f"Using folder-specific begin video for {current_folder}: {selected_video}")
+    else:
+        # Default begin video list for random selection
+        begin_list = [
+            "1.mp4", "2.mp4", "3.mp4", "4.mp4", "5.mp4",
+            "6.mp4", "7.mp4", "8.mp4", "9.mp4", "10.mp4",
+            "11.mp4", "12.mp4"
+        ]
+        selected_video = random.choice(begin_list)
+        logger.info(f"Using random begin video: {selected_video}")
+    
+    random_path = os.path.join(begin_videos_dir, selected_video)
 
     with suppress_moviepy_output():
         clip = VideoFileClip(random_path)
@@ -148,6 +166,7 @@ def combine_videos(
     video_transition_mode: VideoTransitionMode = None,
     max_clip_duration: int = 5,
     threads: int = 2,
+    current_folder: str = None,
 ) -> str:
     audio_clip = AudioFileClip(audio_file)
     audio_duration = audio_clip.duration
@@ -184,7 +203,7 @@ def combine_videos(
     # random subclipped_items order
     if video_concat_mode.value == VideoConcatMode.random.value:
         random.shuffle(subclipped_items)
-    begin_video = random_to_begin_video()
+    begin_video = random_to_begin_video(max_clip_duration, current_folder)
     subclipped_items.insert(0, begin_video)
 
     logger.debug(f"total subclipped items: {len(subclipped_items)}")
