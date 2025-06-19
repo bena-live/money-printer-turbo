@@ -120,7 +120,7 @@ def generate_test_audio(task_id, params, video_script, current_folder=None):
     api_key = "950572cfc2d8f7b6a3515b9fb2b16f9e"
     
     # 根据文件夹名称确定 voice_id
-    if current_folder and current_folder in ["@grumbly.nutlike", "@life.stories.unscripted"]:
+    if current_folder and current_folder in ["@grumbly.nutlike", "@stillmcqfu8"]:
         voice_id = "bOzCWSRHidmZecV2eXAG" # Johnny Depp Pro
         logger.info(f"Using voice_id {voice_id} for folder {current_folder}")
     else:
