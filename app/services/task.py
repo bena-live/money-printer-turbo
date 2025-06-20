@@ -119,9 +119,15 @@ def generate_test_audio(task_id, params, video_script, current_folder=None):
     # ElevenLabs 参数
     api_key = "950572cfc2d8f7b6a3515b9fb2b16f9e"
     
+    folder_voice_mapping = {
+        "@grumbly.nutlike": "bOzCWSRHidmZecV2eXAG",
+        "@life.stories.unscripted": "QzS12bI4vfGLtzmcTN9f", # Lenny Kravitz
+        "@ravindiv6c9": "vzoU3XMfinFIAeu1SQrz", # Eminem
+        "@stillmcqfu8": "bOzCWSRHidmZecV2eXAG",
+    }
     # 根据文件夹名称确定 voice_id
-    if current_folder and current_folder in ["@grumbly.nutlike", "@stillmcqfu8"]:
-        voice_id = "bOzCWSRHidmZecV2eXAG" # Johnny Depp Pro
+    if current_folder and current_folder in folder_voice_mapping:
+        voice_id = folder_voice_mapping[current_folder]
         logger.info(f"Using voice_id {voice_id} for folder {current_folder}")
     else:
         voice_id = "1BUhH8aaMvGMUdGAmWVM" # 性感男声 | MOevUawCfvCOEYqi1iu8 原音频

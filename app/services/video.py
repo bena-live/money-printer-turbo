@@ -127,8 +127,8 @@ def random_to_begin_video(
     # Folder-specific begin video mapping
     folder_video_mapping = {
         "@grumbly.nutlike": "7.mp4",
-        "@life.stories.unscripted": "1.mp4",
-        "@ravindiv6c9": "10.mp4",
+        "@life.stories.unscripted": "1.mp4", # Lenny Kravitz
+        "@ravindiv6c9": "5.mp4", # Eminem
         "@stillmcqfu8": "11.mp4",
     }
     
